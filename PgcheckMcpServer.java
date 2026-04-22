@@ -16,7 +16,7 @@
 //Q:CONFIG quarkus.log.console.enable=false
 //Q:CONFIG quarkus.log.file.enable=true
 //Q:CONFIG quarkus.log.file.path=pgcheck-mcp.log
-//Q:CONFIG quarkus.log.file.rotation-enable=false
+//Q:CONFIG quarkus.log.file.rotation.max-file-size=0
 //Q:CONFIG quarkus.log.file.format=%d{yyyy-MM-dd HH:mm:ss,SSS} %-5p [%c{3.}] %s%e%n
 
 // Default Connection to Docker Playground
