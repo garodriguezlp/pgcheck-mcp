@@ -16,7 +16,7 @@
 //Q:CONFIG quarkus.log.console.enable=false
 //Q:CONFIG quarkus.log.file.enable=true
 //Q:CONFIG quarkus.log.file.path=pgcheck-mcp.log
-//Q:CONFIG quarkus.log.file.rotation.file-suffix=.yyyy-MM-dd_HH-mm-ss
+//Q:CONFIG quarkus.log.file.rotation-enable=false
 //Q:CONFIG quarkus.log.file.format=%d{yyyy-MM-dd HH:mm:ss,SSS} %-5p [%c{3.}] %s%e%n
 
 // Default Connection to Docker Playground
@@ -81,37 +81,22 @@ class PgcheckTools {
     }
 }
 
+/**
+ * Handles SQL security and validation rules.
+ */
 @ApplicationScoped
-class DatabaseExecutor {
-
-    @Inject
-    DataSource dataSource;
+class SqlValidator {
 
     @ConfigProperty(name = "pgcheck.allow-writes", defaultValue = "false")
     boolean allowWrites;
 
-    private final ObjectMapper mapper = new ObjectMapper();
-
-    public String executeQuery(String sql) {
-        return validateQuery(sql)
-                .map(this::errorResponse)
-                .orElseGet(() -> executeAndMapResult(sql));
-    }
-
-    public String getSchema() {
-        try (Connection conn = dataSource.getConnection()) {
-            return buildSchemaJson(conn.getMetaData());
-        } catch (SQLException e) {
-            return errorResponse("Error fetching schema: " + e.getMessage());
-        }
-    }
-
-    private Optional<String> validateQuery(String sql) {
+    public Optional<String> validate(String sql) {
         if (sql == null || sql.trim().isEmpty()) {
             return Optional.of("SQL query cannot be empty");
         }
 
-        String normalizedSql = sql.trim().toUpperCase();
+        String cleanedSql = cleanSql(sql);
+        String normalizedSql = cleanedSql.toUpperCase();
 
         if (isForbidden(normalizedSql)) {
             return Optional.of("Forbidden operation: DDL or administrative commands are strictly blocked.");
@@ -124,57 +109,120 @@ class DatabaseExecutor {
         return Optional.empty();
     }
 
-    private String executeAndMapResult(String sql) {
-        try (Connection conn = dataSource.getConnection();
-             Statement stmt = conn.createStatement()) {
-
-            if (stmt.execute(sql)) {
-                try (ResultSet rs = stmt.getResultSet()) {
-                    return resultSetToJson(rs);
-                }
-            }
-            return buildUpdateCountResponse(stmt.getUpdateCount());
-        } catch (SQLException e) {
-            return errorResponse("SQL Error: " + e.getMessage());
-        }
+    private String cleanSql(String sql) {
+        // Remove multi-line comments /* ... */
+        String noMultiLine = sql.replaceAll("/\\*[\\s\\S]*?\\*/", "");
+        // Remove single-line comments -- ...
+        String noSingleLine = noMultiLine.replaceAll("--.*", "");
+        return noSingleLine.trim();
     }
 
-    private String buildUpdateCountResponse(int updateCount) {
+    private boolean isForbidden(String sql) {
+        return sql.startsWith("CREATE") || sql.startsWith("DROP") || sql.startsWith("ALTER") ||
+               sql.startsWith("TRUNCATE") || sql.startsWith("GRANT") || sql.startsWith("REVOKE") ||
+               sql.startsWith("COMMENT");
+    }
+
+    private boolean isDml(String sql) {
+        return sql.startsWith("INSERT") || sql.startsWith("UPDATE") || sql.startsWith("DELETE") ||
+               sql.startsWith("MERGE");
+    }
+}
+
+/**
+ * Converts Database results and metadata into JSON strings.
+ */
+@ApplicationScoped
+class ResultSerializer {
+
+    private final ObjectMapper mapper = new ObjectMapper();
+
+    public String toJson(ResultSet rs) throws SQLException {
+        ResultSetMetaData metaData = rs.getMetaData();
+        ObjectNode root = mapper.createObjectNode();
+        root.put("status", "success");
+
+        ArrayNode columns = root.putArray("columns");
+        int columnCount = metaData.getColumnCount();
+        for (int i = 1; i <= columnCount; i++) {
+            ObjectNode col = columns.addObject();
+            col.put("name", metaData.getColumnLabel(i));
+            col.put("type", metaData.getColumnTypeName(i));
+        }
+
+        ArrayNode rows = root.putArray("rows");
+        while (rs.next()) {
+            ObjectNode row = rows.addObject();
+            for (int i = 1; i <= columnCount; i++) {
+                String colLabel = metaData.getColumnLabel(i);
+                Object value = rs.getObject(i);
+                if (value == null) {
+                    row.putNull(colLabel);
+                } else if (value instanceof Boolean b) {
+                    row.put(colLabel, b);
+                } else if (value instanceof Number n) {
+                    if (value instanceof Integer iVal) row.put(colLabel, iVal);
+                    else if (value instanceof Long lVal) row.put(colLabel, lVal);
+                    else if (value instanceof Double dVal) row.put(colLabel, dVal);
+                    else if (value instanceof java.math.BigDecimal bdVal) row.put(colLabel, bdVal);
+                    else row.put(colLabel, n.toString());
+                } else {
+                    row.put(colLabel, value.toString());
+                }
+            }
+        }
+
+        root.put("row_count", rows.size());
+        return root.toString();
+    }
+
+    public String toJson(int updateCount) {
         ObjectNode result = mapper.createObjectNode();
         result.put("status", "success");
         result.put("row_count", updateCount);
         return result.toString();
     }
 
-    private String buildSchemaJson(DatabaseMetaData metaData) throws SQLException {
-        ObjectNode root = mapper.createObjectNode();
+    public String error(String message) {
+        ObjectNode error = mapper.createObjectNode();
+        error.put("status", "error");
+        error.put("message", message);
+        return error.toString();
+    }
+
+    public ObjectMapper mapper() {
+        return mapper;
+    }
+}
+
+/**
+ * Inspects database metadata to build schema definitions.
+ */
+@ApplicationScoped
+class SchemaInspector {
+
+    @Inject
+    ResultSerializer serializer;
+
+    public String inspect(DatabaseMetaData metaData) throws SQLException {
+        ObjectNode root = serializer.mapper().createObjectNode();
         ArrayNode tablesNode = root.putArray("tables");
 
         try (ResultSet rs = metaData.getTables(null, null, "%", new String[]{"TABLE", "VIEW"})) {
             while (rs.next()) {
-                processTable(metaData, rs, tablesNode);
+                String schemaName = rs.getString("TABLE_SCHEM");
+                if (isSystemSchema(schemaName)) continue;
+
+                String tableName = rs.getString("TABLE_NAME");
+                ObjectNode tableNode = tablesNode.addObject();
+                tableNode.put("schema", schemaName);
+                tableNode.put("name", tableName);
+                tableNode.put("type", rs.getString("TABLE_TYPE"));
+
+                appendColumns(metaData, schemaName, tableName, tableNode.putArray("columns"));
             }
         }
         return root.toString();
-    }
-
-    private void processTable(DatabaseMetaData metaData, ResultSet rs, ArrayNode tablesNode) throws SQLException {
-        String schemaName = rs.getString("TABLE_SCHEM");
-        if (isSystemSchema(schemaName)) {
-            return;
-        }
-
-        String tableName = rs.getString("TABLE_NAME");
-        ObjectNode tableNode = tablesNode.addObject();
-        tableNode.put("schema", schemaName);
-        tableNode.put("name", tableName);
-        tableNode.put("type", rs.getString("TABLE_TYPE"));
-
-        appendColumns(metaData, schemaName, tableName, tableNode.putArray("columns"));
-    }
-
-    private boolean isSystemSchema(String schemaName) {
-        return "information_schema".equals(schemaName) || "pg_catalog".equals(schemaName);
     }
 
     private void appendColumns(DatabaseMetaData metaData, String schema, String table, ArrayNode columnsNode) throws SQLException {
@@ -188,59 +236,56 @@ class DatabaseExecutor {
         }
     }
 
-    private String resultSetToJson(ResultSet rs) throws SQLException {
-        ResultSetMetaData metaData = rs.getMetaData();
-        ObjectNode root = mapper.createObjectNode();
-        root.put("status", "success");
+    private boolean isSystemSchema(String schemaName) {
+        return schemaName == null || 
+               "information_schema".equals(schemaName) || 
+               "pg_catalog".equals(schemaName) ||
+               schemaName.startsWith("pg_toast") ||
+               schemaName.startsWith("pg_temp");
+    }
+}
 
-        appendColumnMetadata(metaData, root.putArray("columns"));
-        ArrayNode rows = root.putArray("rows");
-        appendRowData(rs, metaData, rows);
+/**
+ * Orchestrates the execution of database operations.
+ */
+@ApplicationScoped
+class DatabaseExecutor {
 
-        root.put("row_count", rows.size());
-        return root.toString();
+    @Inject
+    DataSource dataSource;
+
+    @Inject
+    SqlValidator validator;
+
+    @Inject
+    ResultSerializer serializer;
+
+    @Inject
+    SchemaInspector inspector;
+
+    public String executeQuery(String sql) {
+        return validator.validate(sql)
+                .map(serializer::error)
+                .orElseGet(() -> {
+                    try (Connection conn = dataSource.getConnection();
+                         Statement stmt = conn.createStatement()) {
+                        if (stmt.execute(sql)) {
+                            try (ResultSet rs = stmt.getResultSet()) {
+                                return serializer.toJson(rs);
+                            }
+                        }
+                        return serializer.toJson(stmt.getUpdateCount());
+                    } catch (SQLException e) {
+                        return serializer.error("SQL Error: " + e.getMessage());
+                    }
+                });
     }
 
-    private void appendColumnMetadata(ResultSetMetaData metaData, ArrayNode columns) throws SQLException {
-        int columnCount = metaData.getColumnCount();
-        for (int i = 1; i <= columnCount; i++) {
-            ObjectNode col = columns.addObject();
-            col.put("name", metaData.getColumnName(i));
-            col.put("type", metaData.getColumnTypeName(i));
+    public String getSchema() {
+        try (Connection conn = dataSource.getConnection()) {
+            return inspector.inspect(conn.getMetaData());
+        } catch (SQLException e) {
+            return serializer.error("Error fetching schema: " + e.getMessage());
         }
-    }
-
-    private void appendRowData(ResultSet rs, ResultSetMetaData metaData, ArrayNode rows) throws SQLException {
-        int columnCount = metaData.getColumnCount();
-        while (rs.next()) {
-            ObjectNode row = rows.addObject();
-            for (int i = 1; i <= columnCount; i++) {
-                String colName = metaData.getColumnName(i);
-                Object value = rs.getObject(i);
-                if (value == null) {
-                    row.putNull(colName);
-                } else {
-                    row.put(colName, value.toString());
-                }
-            }
-        }
-    }
-
-    private boolean isForbidden(String sql) {
-        return sql.startsWith("CREATE") || sql.startsWith("DROP") || sql.startsWith("ALTER") ||
-               sql.startsWith("TRUNCATE") || sql.startsWith("GRANT") || sql.startsWith("REVOKE") ||
-               sql.startsWith("COMMENT");
-    }
-
-    private boolean isDml(String sql) {
-        return sql.startsWith("INSERT") || sql.startsWith("UPDATE") || sql.startsWith("DELETE") ||
-               sql.startsWith("MERGE");
-    }
-
-    private String errorResponse(String message) {
-        ObjectNode error = mapper.createObjectNode();
-        error.put("status", "error");
-        error.put("message", message);
-        return error.toString();
     }
 }
