@@ -15,6 +15,8 @@
 //Q:CONFIG quarkus.log.level=INFO
 //Q:CONFIG quarkus.log.console.enable=false
 //Q:CONFIG quarkus.log.file.enable=true
+//Q:CONFIG quarkus.log.file.path=pgcheck-mcp.log
+//Q:CONFIG quarkus.log.file.rotation.file-suffix=.yyyy-MM-dd_HH-mm-ss
 //Q:CONFIG quarkus.log.file.format=%d{yyyy-MM-dd HH:mm:ss,SSS} %-5p [%c{3.}] %s%e%n
 
 // Default Connection to Docker Playground
@@ -55,10 +57,6 @@ public class PgcheckMcpServer implements QuarkusApplication {
     }
 
     public static void main(String... args) {
-        if (System.getProperty("quarkus.log.file.path") == null && System.getenv("QUARKUS_LOG_FILE_PATH") == null) {
-            String timestamp = java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
-            System.setProperty("quarkus.log.file.path", "pgcheck-mcp-" + timestamp + ".log");
-        }
         Quarkus.run(PgcheckMcpServer.class, args);
     }
 }
