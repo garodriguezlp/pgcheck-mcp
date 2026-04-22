@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "pgcheck-mcp": {
+      "command": "C:\\Users\\garod\\src\\garodriguezlp\\pgcheck-mcp\\jbang.cmd",
+      "args": [
+        "C:\\Users\\garod\\src\\garodriguezlp\\pgcheck-mcp\\PgcheckMcpServer.java"
+      ],
+      "env": {
+        "QUARKUS_DATASOURCE_JDBC_URL": "jdbc:postgresql://localhost:5432/postgres",
+        "QUARKUS_DATASOURCE_USERNAME": "postgres",
+        "QUARKUS_DATASOURCE_PASSWORD": "postgres"
+      },
+      "trust": true
+    }
+  }
+}
