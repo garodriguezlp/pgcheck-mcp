@@ -101,6 +101,16 @@ The server should expose the following tools to the AI:
   - **Description**: Retrieves the database schema (tables and views).
   - **Returns**: A JSON string describing available tables and their columns.
 
+### 4.6. Coding Standards & Style
+The implementation must adhere to strict clean code principles to ensure high maintainability and readability:
+
+1.  **SOLID Principles**: Every class and method should have a single, well-defined responsibility.
+2.  **Small, Single-Purpose Abstractions**: Favor small classes and methods. If a method exceeds 10-15 lines, it is likely doing too much.
+3.  **Single Level of Abstraction (SLA)**: All statements within a method should share the same level of abstraction. High-level logic should not be mixed with low-level implementation details (e.g., raw JDBC handling vs. high-level query execution flow).
+4.  **Top-Down Storytelling**: Code should be readable from top to bottom. Public "entry point" methods should appear first, delegating specific tasks to well-named private methods that handle the "details."
+5.  **Declarative Style**: Use descriptive names for variables and methods that reveal intent. The code should "explain itself" without needing excessive comments.
+6.  **Resource Management**: Strictly use try-with-resources for all JDBC objects (Connections, Statements, ResultSets).
+
 ## 5. Execution & Testing
 The resulting script should be executable directly via JBang:
 ```bash

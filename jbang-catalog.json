@@ -1,0 +1,8 @@
+{
+  "aliases": {
+    "pgcheck-mcp": {
+      "script-ref": "PgcheckMcpServer.java",
+      "description": "PostgreSQL MCP Server with connection pooling"
+    }
+  }
+}

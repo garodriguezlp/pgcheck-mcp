@@ -1,0 +1,33 @@
+2026-04-21 23:15:43,477 INFO  [io.quarkus] quarkus 999-SNAPSHOT on JVM (powered by Quarkus 3.18.0) started in 0.778s. 
+2026-04-21 23:15:43,482 INFO  [io.quarkus] Profile prod activated. 
+2026-04-21 23:15:43,482 INFO  [io.quarkus] Installed features: [agroal, cdi, jdbc-postgresql, mcp-server-stdio, narayana-jta, picocli, smallrye-context-propagation, vertx]
+2026-04-21 23:15:56,687 INFO  [io.quarkus] quarkus 999-SNAPSHOT on JVM (powered by Quarkus 3.18.0) started in 0.677s. 
+2026-04-21 23:15:56,691 INFO  [io.quarkus] Profile prod activated. 
+2026-04-21 23:15:56,691 INFO  [io.quarkus] Installed features: [agroal, cdi, jdbc-postgresql, mcp-server-stdio, narayana-jta, picocli, smallrye-context-propagation, vertx]
+2026-04-21 23:15:56,693 ERROR [io.qua.mcp.ser.std.run.StdioMcpMessageHandler] Unable to parse the JSON message: io.vertx.core.json.DecodeException: Failed to decode:Unexpected character ('`' (code 96)): was expecting double-quote to start field name
+ at [Source: REDACTED (`StreamReadFeature.INCLUDE_SOURCE_IN_LOCATION` disabled); line: 1, column: 2]
+	at io.quarkus.vertx.runtime.jackson.QuarkusJacksonJsonCodec.fromParser(QuarkusJacksonJsonCodec.java:148)
+	at io.quarkus.vertx.runtime.jackson.QuarkusJacksonJsonCodec.fromString(QuarkusJacksonJsonCodec.java:115)
+	at io.vertx.core.json.JsonObject.fromJson(JsonObject.java:1262)
+	at io.vertx.core.json.JsonObject.<init>(JsonObject.java:51)
+	at io.quarkiverse.mcp.server.stdio.runtime.StdioMcpMessageHandler$1.run(StdioMcpMessageHandler.java:89)
+	at java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:545)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:328)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1090)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:614)
+	at java.base/java.lang.Thread.run(Thread.java:1474)
+Caused by: com.fasterxml.jackson.core.JsonParseException: Unexpected character ('`' (code 96)): was expecting double-quote to start field name
+ at [Source: REDACTED (`StreamReadFeature.INCLUDE_SOURCE_IN_LOCATION` disabled); line: 1, column: 2]
+	at com.fasterxml.jackson.core.JsonParser._constructReadException(JsonParser.java:2660)
+	at com.fasterxml.jackson.core.base.ParserMinimalBase._reportUnexpectedChar(ParserMinimalBase.java:741)
+	at com.fasterxml.jackson.core.json.ReaderBasedJsonParser._handleOddName(ReaderBasedJsonParser.java:1909)
+	at com.fasterxml.jackson.core.json.ReaderBasedJsonParser.nextFieldName(ReaderBasedJsonParser.java:939)
+	at com.fasterxml.jackson.databind.deser.std.MapDeserializer._readAndBindStringKeyMap(MapDeserializer.java:596)
+	at com.fasterxml.jackson.databind.deser.std.MapDeserializer.deserialize(MapDeserializer.java:449)
+	at com.fasterxml.jackson.databind.deser.std.MapDeserializer.deserialize(MapDeserializer.java:32)
+	at com.fasterxml.jackson.databind.deser.DefaultDeserializationContext.readRootValue(DefaultDeserializationContext.java:342)
+	at com.fasterxml.jackson.databind.ObjectMapper._readValue(ObjectMapper.java:4893)
+	at com.fasterxml.jackson.databind.ObjectMapper.readValue(ObjectMapper.java:3036)
+	at io.quarkus.vertx.runtime.jackson.QuarkusJacksonJsonCodec.fromParser(QuarkusJacksonJsonCodec.java:145)
+	... 9 more
+

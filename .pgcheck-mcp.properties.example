@@ -1,0 +1,9 @@
+# pgcheck-mcp configuration
+# Copy this file to .pgcheck-mcp.properties and adjust as needed
+
+quarkus.datasource.jdbc.url=jdbc:postgresql://localhost:5432/postgres
+quarkus.datasource.username=postgres
+quarkus.datasource.password=postgres
+
+# Server options
+pgcheck.allow-writes=false

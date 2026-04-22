@@ -1,0 +1,17 @@
+services:
+  postgres:
+    image: postgres:16.3
+    container_name: pgcheck-mcp-db
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
