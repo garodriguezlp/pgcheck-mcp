@@ -32,6 +32,7 @@ import io.quarkus.runtime.annotations.QuarkusMain;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
+import org.jboss.logging.Logger;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
@@ -49,9 +50,11 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 @QuarkusMain
 public class PgcheckMcpServer implements QuarkusApplication {
 
+    private static final Logger LOG = Logger.getLogger(PgcheckMcpServer.class);
+
     @Override
     public int run(String... args) throws Exception {
-        System.err.println("pgcheck-mcp server starting...");
+        LOG.info("pgcheck-mcp server starting...");
         Quarkus.waitForExit();
         return 0;
     }
@@ -67,16 +70,20 @@ public class PgcheckMcpServer implements QuarkusApplication {
 @ApplicationScoped
 class PgcheckTools {
 
+    private static final Logger LOG = Logger.getLogger(PgcheckTools.class);
+
     @Inject
     DatabaseExecutor executor;
 
     @Tool(description = "Executes a SQL query against the connected PostgreSQL database.")
     public String execute_query(String sql) {
+        LOG.infof("Tool execute_query called with SQL: %s", sql);
         return executor.executeQuery(sql);
     }
 
     @Tool(description = "Retrieves the database schema (tables and views).")
     public String get_schema() {
+        LOG.info("Tool get_schema called");
         return executor.getSchema();
     }
 }
@@ -86,6 +93,8 @@ class PgcheckTools {
  */
 @ApplicationScoped
 class SqlValidator {
+
+    private static final Logger LOG = Logger.getLogger(SqlValidator.class);
 
     @ConfigProperty(name = "pgcheck.allow-writes", defaultValue = "false")
     boolean allowWrites;
@@ -99,10 +108,12 @@ class SqlValidator {
         String normalizedSql = cleanedSql.toUpperCase();
 
         if (isForbidden(normalizedSql)) {
+            LOG.warnf("Blocked forbidden operation (DDL/Admin): %s", cleanedSql);
             return Optional.of("Forbidden operation: DDL or administrative commands are strictly blocked.");
         }
 
         if (isDml(normalizedSql) && !allowWrites) {
+            LOG.warnf("Blocked DML operation (writes disabled): %s", cleanedSql);
             return Optional.of("DML operation (INSERT, UPDATE, DELETE) is blocked. Set 'pgcheck.allow-writes=true' to enable.");
         }
 
@@ -201,10 +212,13 @@ class ResultSerializer {
 @ApplicationScoped
 class SchemaInspector {
 
+    private static final Logger LOG = Logger.getLogger(SchemaInspector.class);
+
     @Inject
     ResultSerializer serializer;
 
     public String inspect(DatabaseMetaData metaData) throws SQLException {
+        LOG.debug("Starting schema inspection");
         ObjectNode root = serializer.mapper().createObjectNode();
         ArrayNode tablesNode = root.putArray("tables");
 
@@ -222,6 +236,7 @@ class SchemaInspector {
                 appendColumns(metaData, schemaName, tableName, tableNode.putArray("columns"));
             }
         }
+        LOG.info("Schema inspection completed successfully");
         return root.toString();
     }
 
@@ -251,6 +266,8 @@ class SchemaInspector {
 @ApplicationScoped
 class DatabaseExecutor {
 
+    private static final Logger LOG = Logger.getLogger(DatabaseExecutor.class);
+
     @Inject
     DataSource dataSource;
 
@@ -269,13 +286,19 @@ class DatabaseExecutor {
                 .orElseGet(() -> {
                     try (Connection conn = dataSource.getConnection();
                          Statement stmt = conn.createStatement()) {
+                        LOG.debugf("Executing SQL: %s", sql);
                         if (stmt.execute(sql)) {
                             try (ResultSet rs = stmt.getResultSet()) {
-                                return serializer.toJson(rs);
+                                String json = serializer.toJson(rs);
+                                LOG.infof("Query executed successfully. Result rows: %d", rs.getRow()); // This might not work as expected with all drivers
+                                return json;
                             }
                         }
-                        return serializer.toJson(stmt.getUpdateCount());
+                        int updateCount = stmt.getUpdateCount();
+                        LOG.infof("Statement executed successfully. Update count: %d", updateCount);
+                        return serializer.toJson(updateCount);
                     } catch (SQLException e) {
+                        LOG.errorf(e, "SQL Execution failed: %s", e.getMessage());
                         return serializer.error("SQL Error: " + e.getMessage());
                     }
                 });
@@ -285,6 +308,7 @@ class DatabaseExecutor {
         try (Connection conn = dataSource.getConnection()) {
             return inspector.inspect(conn.getMetaData());
         } catch (SQLException e) {
+            LOG.errorf(e, "Failed to fetch schema: %s", e.getMessage());
             return serializer.error("Error fetching schema: " + e.getMessage());
         }
     }
