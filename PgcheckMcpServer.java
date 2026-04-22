@@ -1,7 +1,8 @@
 ///usr/bin/env jbang "$0" "$@" ; exit $?
-//DEPS io.quarkus:quarkus-bom:3.18.0@pom
+
+//JAVA 17+
+
 //DEPS io.quarkiverse.mcp:quarkus-mcp-server-stdio:1.1.0
-//DEPS io.quarkus:quarkus-picocli
 //DEPS io.quarkus:quarkus-jdbc-postgresql
 //DEPS io.quarkus:quarkus-agroal
 //DEPS com.fasterxml.jackson.core:jackson-databind
@@ -20,20 +21,15 @@
 //Q:CONFIG quarkus.datasource.password=postgres
 
 import io.quarkiverse.mcp.server.Tool;
-import io.quarkus.picocli.runtime.annotations.TopCommand;
 import io.quarkus.runtime.Quarkus;
 import io.quarkus.runtime.annotations.QuarkusMain;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
-import picocli.CommandLine;
-import picocli.CommandLine.Command;
-import picocli.CommandLine.Option;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 import javax.sql.DataSource;
 import java.sql.*;
 import java.util.*;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicReference;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -42,66 +38,18 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.quarkus.runtime.QuarkusApplication;
 
 @QuarkusMain
-@TopCommand
-@Command(name = "pgcheck-mcp", mixinStandardHelpOptions = true, description = "PostgreSQL MCP Server")
-public class PgcheckMcpServer implements Runnable, QuarkusApplication {
-
-    @Option(names = {"--db-url"}, description = "Database URL", defaultValue = "${env:QUARKUS_DATASOURCE_JDBC_URL:-jdbc:postgresql://localhost:5432/postgres}")
-    String dbUrl;
-
-    @Option(names = {"--db-user"}, description = "Database User", defaultValue = "${env:QUARKUS_DATASOURCE_USERNAME:-postgres}")
-    String dbUser;
-
-    @Option(names = {"--db-pass"}, description = "Database Password", defaultValue = "${env:QUARKUS_DATASOURCE_PASSWORD:-postgres}")
-    String dbPass;
-
-    @Option(names = {"--allow-writes"}, description = "Allow DML operations (INSERT, UPDATE, DELETE)", defaultValue = "false")
-    boolean allowWrites;
+public class PgcheckMcpServer implements QuarkusApplication {
 
     @Override
     public int run(String... args) throws Exception {
-        return new CommandLine(this).execute(args);
-    }
-
-    @Override
-    public void run() {
-        ServerSettings.setDbUrl(dbUrl);
-        ServerSettings.setDbUser(dbUser);
-        ServerSettings.setDbPass(dbPass);
-        ServerSettings.setAllowWrites(allowWrites);
-
         System.err.println("pgcheck-mcp server starting...");
-        System.err.println("Database URL: " + dbUrl);
-        System.err.println("Allow Writes: " + allowWrites);
-
         Quarkus.waitForExit();
+        return 0;
     }
 
     public static void main(String... args) {
         Quarkus.run(PgcheckMcpServer.class, args);
     }
-}
-
-/**
- * State Management for server settings.
- */
-class ServerSettings {
-    private static final AtomicReference<String> dbUrl = new AtomicReference<>();
-    private static final AtomicReference<String> dbUser = new AtomicReference<>();
-    private static final AtomicReference<String> dbPass = new AtomicReference<>();
-    private static final AtomicBoolean allowWrites = new AtomicBoolean(false);
-
-    public static void setDbUrl(String url) { dbUrl.set(url); }
-    public static String getDbUrl() { return dbUrl.get(); }
-
-    public static void setDbUser(String user) { dbUser.set(user); }
-    public static String getDbUser() { return dbUser.get(); }
-
-    public static void setDbPass(String pass) { dbPass.set(pass); }
-    public static String getDbPass() { return dbPass.get(); }
-
-    public static void setAllowWrites(boolean allow) { allowWrites.set(allow); }
-    public static boolean isAllowWrites() { return allowWrites.get(); }
 }
 
 /**
@@ -133,6 +81,9 @@ class DatabaseExecutor {
     @Inject
     DataSource dataSource;
 
+    @ConfigProperty(name = "pgcheck.allow-writes", defaultValue = "false")
+    boolean allowWrites;
+
     private final ObjectMapper mapper = new ObjectMapper();
 
     public String executeQuery(String sql) {
@@ -147,11 +98,11 @@ class DatabaseExecutor {
             return errorResponse("Forbidden operation: DDL or administrative commands are strictly blocked.");
         }
 
-        if (isDml(normalizedSql) && !ServerSettings.isAllowWrites()) {
-            return errorResponse("DML operation (INSERT, UPDATE, DELETE) is blocked. Use --allow-writes=true to enable.");
+        if (isDml(normalizedSql) && !allowWrites) {
+            return errorResponse("DML operation (INSERT, UPDATE, DELETE) is blocked. Set 'pgcheck.allow-writes=true' to enable.");
         }
 
-        try (Connection conn = getConnection();
+        try (Connection conn = dataSource.getConnection();
              Statement stmt = conn.createStatement()) {
             
             boolean hasResultSet = stmt.execute(sql);
@@ -173,7 +124,7 @@ class DatabaseExecutor {
     }
 
     public String getSchema() {
-        try (Connection conn = getConnection()) {
+        try (Connection conn = dataSource.getConnection()) {
             DatabaseMetaData metaData = conn.getMetaData();
             ObjectNode root = mapper.createObjectNode();
             ArrayNode tablesNode = root.putArray("tables");
@@ -206,15 +157,6 @@ class DatabaseExecutor {
         } catch (SQLException e) {
             return errorResponse("Error fetching schema: " + e.getMessage());
         }
-    }
-
-    private Connection getConnection() throws SQLException {
-        // Agroal DataSource is injected, but we want to ensure it uses our settings if they were overridden via CLI
-        // In a real Quarkus app, we'd use a dynamic datasource or similar, 
-        // but for a single-file JBang script, we'll try to use the injected one first 
-        // and only fallback if needed.
-        // Actually, Quarkus reads system properties and env vars, which Picocli can also set.
-        return dataSource.getConnection();
     }
 
     private boolean isForbidden(String sql) {

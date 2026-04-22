@@ -7,7 +7,7 @@ A Model Context Protocol (MCP) server for PostgreSQL, based on Quarkus and JBang
 - **Connection Pooling**: Uses Agroal for efficient database connection management.
 - **Safety First**: 
     - Read-only by default.
-    - DML (INSERT, UPDATE, DELETE) requires `--allow-writes=true`.
+    - DML (INSERT, UPDATE, DELETE) requires `-Dpgcheck.allow-writes=true`.
     - DDL (CREATE, DROP, ALTER) is strictly blocked.
 - **Single-file**: The entire server is contained in `PgcheckMcpServer.java`.
 
@@ -34,9 +34,12 @@ You can run the server directly using JBang:
 jbang PgcheckMcpServer.java
 ```
 
-Or with custom database settings:
+Or with custom database settings (using standard Quarkus properties):
 ```bash
-jbang PgcheckMcpServer.java --db-url="jdbc:postgresql://localhost:5432/postgres" --db-user="postgres" --db-pass="postgres"
+jbang -Dquarkus.datasource.jdbc.url="jdbc:postgresql://localhost:5432/postgres" \
+      -Dquarkus.datasource.username="postgres" \
+      -Dquarkus.datasource.password="postgres" \
+      PgcheckMcpServer.java
 ```
 
 ### 3. Test with MCP Inspector
@@ -51,8 +54,8 @@ npx @modelcontextprotocol/inspector jbang PgcheckMcpServer.java
 
 ## Configuration
 The server can be configured via:
-1. CLI Arguments (`--db-url`, `--db-user`, etc.)
-2. Environment Variables (`QUARKUS_DATASOURCE_JDBC_URL`, etc.)
+1. Environment Variables (`QUARKUS_DATASOURCE_JDBC_URL`, `QUARKUS_DATASOURCE_USERNAME`, etc.)
+2. System Properties (`-Dquarkus.datasource...` and `-Dpgcheck.allow-writes=true`)
 3. A local `.pgcheck-mcp.properties` file.
 
 ## Logs
