@@ -3,7 +3,10 @@
 //JAVA 17+
 
 //COMPILE_OPTIONS -encoding UTF-8
-//RUNTIME_OPTIONS -Dfile.encoding=UTF-8 -Dstdout.encoding=UTF-8 -Djava.util.logging.manager=org.jboss.logmanager.LogManager
+//RUNTIME_OPTIONS -Dfile.encoding=UTF-8
+//RUNTIME_OPTIONS -Dstdout.encoding=UTF-8 
+//RUNTIME_OPTIONS -Djava.util.logging.manager=org.jboss.logmanager.LogManager 
+//RUNTIME_OPTIONS -Dio.netty.noUnsafe=true
 
 //DEPS io.quarkus:quarkus-bom:3.30.8@pom
 //DEPS io.quarkiverse.mcp:quarkus-mcp-server-stdio:1.12.0
