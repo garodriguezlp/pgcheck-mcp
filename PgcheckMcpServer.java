@@ -27,6 +27,16 @@
 //Q:CONFIG quarkus.datasource.username=postgres
 //Q:CONFIG quarkus.datasource.password=postgres
 
+// Conservative pool: stdio server is sequential, 1 connection at a time is enough.
+// Aggressive release settings prevent exhausting limited-quota managed databases.
+//Q:CONFIG quarkus.datasource.jdbc.min-size=0
+//Q:CONFIG quarkus.datasource.jdbc.max-size=2
+//Q:CONFIG quarkus.datasource.jdbc.initial-size=0
+//Q:CONFIG quarkus.datasource.jdbc.acquisition-timeout=5s
+//Q:CONFIG quarkus.datasource.jdbc.idle-removal-interval=60s
+//Q:CONFIG quarkus.datasource.jdbc.max-lifetime=300s
+//Q:CONFIG quarkus.datasource.jdbc.background-validation-interval=30s
+
 import io.quarkiverse.mcp.server.Tool;
 import io.quarkus.runtime.Quarkus;
 import io.quarkus.runtime.QuarkusApplication;
@@ -152,41 +162,42 @@ class ResultSerializer {
 
     public String toJson(ResultSet rs) throws SQLException {
         ResultSetMetaData metaData = rs.getMetaData();
+        int columnCount = metaData.getColumnCount();
         ObjectNode root = mapper.createObjectNode();
         root.put("status", "success");
+        appendColumns(metaData, columnCount, root.putArray("columns"));
+        ArrayNode rows = root.putArray("rows");
+        appendRows(rs, metaData, columnCount, rows);
+        root.put("row_count", rows.size());
+        return root.toString();
+    }
 
-        ArrayNode columns = root.putArray("columns");
-        int columnCount = metaData.getColumnCount();
+    private void appendColumns(ResultSetMetaData metaData, int columnCount, ArrayNode columns) throws SQLException {
         for (int i = 1; i <= columnCount; i++) {
             ObjectNode col = columns.addObject();
             col.put("name", metaData.getColumnLabel(i));
             col.put("type", metaData.getColumnTypeName(i));
         }
+    }
 
-        ArrayNode rows = root.putArray("rows");
+    private void appendRows(ResultSet rs, ResultSetMetaData metaData, int columnCount, ArrayNode rows) throws SQLException {
         while (rs.next()) {
             ObjectNode row = rows.addObject();
             for (int i = 1; i <= columnCount; i++) {
-                String colLabel = metaData.getColumnLabel(i);
-                Object value = rs.getObject(i);
-                if (value == null) {
-                    row.putNull(colLabel);
-                } else if (value instanceof Boolean b) {
-                    row.put(colLabel, b);
-                } else if (value instanceof Number n) {
-                    if (value instanceof Integer iVal) row.put(colLabel, iVal);
-                    else if (value instanceof Long lVal) row.put(colLabel, lVal);
-                    else if (value instanceof Double dVal) row.put(colLabel, dVal);
-                    else if (value instanceof java.math.BigDecimal bdVal) row.put(colLabel, bdVal);
-                    else row.put(colLabel, n.toString());
-                } else {
-                    row.put(colLabel, value.toString());
-                }
+                putValue(row, metaData.getColumnLabel(i), rs.getObject(i));
             }
         }
+    }
 
-        root.put("row_count", rows.size());
-        return root.toString();
+    private void putValue(ObjectNode row, String col, Object value) {
+        if (value == null) row.putNull(col);
+        else if (value instanceof Boolean b) row.put(col, b);
+        else if (value instanceof Integer iVal) row.put(col, iVal);
+        else if (value instanceof Long lVal) row.put(col, lVal);
+        else if (value instanceof Double dVal) row.put(col, dVal);
+        else if (value instanceof java.math.BigDecimal bdVal) row.put(col, bdVal);
+        else if (value instanceof Number n) row.put(col, n.toString());
+        else row.put(col, value.toString());
     }
 
     public String toJson(int updateCount) {
@@ -269,6 +280,8 @@ class SchemaInspector {
 class DatabaseExecutor {
 
     private static final Logger LOG = Logger.getLogger(DatabaseExecutor.class);
+    private static final int MAX_RETRIES = 3;
+    private static final long INITIAL_BACKOFF_MS = 500;
 
     @Inject
     DataSource dataSource;
@@ -282,36 +295,85 @@ class DatabaseExecutor {
     @Inject
     SchemaInspector inspector;
 
+    @FunctionalInterface
+    private interface DbOperation<T> {
+        T execute() throws SQLException;
+    }
+
     public String executeQuery(String sql) {
         return validator.validate(sql)
                 .map(serializer::error)
-                .orElseGet(() -> {
-                    try (Connection conn = dataSource.getConnection();
-                         Statement stmt = conn.createStatement()) {
-                        LOG.debugf("Executing SQL: %s", sql);
-                        if (stmt.execute(sql)) {
-                            try (ResultSet rs = stmt.getResultSet()) {
-                                String json = serializer.toJson(rs);
-                                LOG.infof("Query executed successfully. Result rows: %d", rs.getRow()); // This might not work as expected with all drivers
-                                return json;
-                            }
-                        }
-                        int updateCount = stmt.getUpdateCount();
-                        LOG.infof("Statement executed successfully. Update count: %d", updateCount);
-                        return serializer.toJson(updateCount);
-                    } catch (SQLException e) {
-                        LOG.errorf(e, "SQL Execution failed: %s", e.getMessage());
-                        return serializer.error("SQL Error: " + e.getMessage());
-                    }
-                });
+                .orElseGet(() -> executeWithRetry(sql));
     }
 
     public String getSchema() {
-        try (Connection conn = dataSource.getConnection()) {
-            return inspector.inspect(conn.getMetaData());
+        try {
+            return withRetry(this::inspectSchema);
         } catch (SQLException e) {
             LOG.errorf(e, "Failed to fetch schema: %s", e.getMessage());
             return serializer.error("Error fetching schema: " + e.getMessage());
         }
+    }
+
+    private String executeWithRetry(String sql) {
+        try {
+            return withRetry(() -> runStatement(sql));
+        } catch (SQLException e) {
+            LOG.errorf(e, "SQL Execution failed: %s", e.getMessage());
+            return serializer.error("SQL Error: " + e.getMessage());
+        }
+    }
+
+    private String runStatement(String sql) throws SQLException {
+        try (Connection conn = dataSource.getConnection();
+             Statement stmt = conn.createStatement()) {
+            LOG.debugf("Executing SQL: %s", sql);
+            return stmt.execute(sql) ? serializeResultSet(stmt) : serializeUpdateCount(stmt);
+        }
+    }
+
+    private String serializeResultSet(Statement stmt) throws SQLException {
+        try (ResultSet rs = stmt.getResultSet()) {
+            return serializer.toJson(rs);
+        }
+    }
+
+    private String serializeUpdateCount(Statement stmt) throws SQLException {
+        int count = stmt.getUpdateCount();
+        LOG.infof("Statement executed. Update count: %d", count);
+        return serializer.toJson(count);
+    }
+
+    private String inspectSchema() throws SQLException {
+        try (Connection conn = dataSource.getConnection()) {
+            return inspector.inspect(conn.getMetaData());
+        }
+    }
+
+    private <T> T withRetry(DbOperation<T> op) throws SQLException {
+        long backoffMs = INITIAL_BACKOFF_MS;
+        for (int attempt = 0; ; attempt++) {
+            try {
+                return op.execute();
+            } catch (SQLException e) {
+                if (!isRetryable(e) || attempt >= MAX_RETRIES) throw e;
+                LOG.warnf("Transient DB error (SQLState: %s, attempt %d/%d): %s. Retrying in %dms...",
+                        e.getSQLState(), attempt + 1, MAX_RETRIES, e.getMessage(), backoffMs);
+                try {
+                    Thread.sleep(backoffMs);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    throw new SQLException("Interrupted during retry backoff", ie);
+                }
+                backoffMs = Math.min(backoffMs * 2, 4000);
+            }
+        }
+    }
+
+    private boolean isRetryable(SQLException e) {
+        String s = e.getSQLState();
+        // 53xxx = insufficient_resources (53300 = too_many_connections)
+        // 08xxx = connection_exception (transient network/connection failures)
+        return s != null && (s.startsWith("53") || s.startsWith("08"));
     }
 }
