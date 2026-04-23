@@ -1,6 +1,7 @@
 {
-  "mcpServers": {
+  "servers": {
     "pgcheck-mcp": {
+      "type": "stdio",
       "command": "jbang",
       "args": ["PgcheckMcpServer.java"],
       "env": {
