@@ -1,6 +1,6 @@
 # pgcheck-mcp
 
-A Model Context Protocol (MCP) server for PostgreSQL, based on Quarkus and JBang. Designed for AI agents (like Claude) to interact with databases safely and efficiently.
+A Model Context Protocol (MCP) server for PostgreSQL, built with Quarkus and JBang. It is designed for AI agents to interact with databases safely, predictably, and with JSON-first responses.
 
 ## 🚀 Features
 - **MCP Stdio Support**: Communicates with AI agents via standard input/output (JSON-RPC).
@@ -12,8 +12,8 @@ A Model Context Protocol (MCP) server for PostgreSQL, based on Quarkus and JBang
     - **DDL Protection**: `CREATE`, `DROP`, `ALTER` are strictly blocked.
 - **Single-file**: The entire server is a single JBang-runnable `PgcheckMcpServer.java`.
 
-## 🤖 For AI Agents
-If you are an AI agent reading this, please check **[AGENTS.md](./AGENTS.md)** for detailed instructions on how to use this tool effectively.
+## For Agents
+If you are an agent working on this repo or calling this server, start with **[AGENTS.md](./AGENTS.md)**. It contains the repository map, safety rules, validation workflow, and usage guidance for `get_schema()` and `execute_query(sql)`.
 
 ## 📋 Prerequisites
 - **Java 17+**
@@ -28,8 +28,8 @@ Use the provided scripts to spin up a PostgreSQL instance with sample data:
 # On Linux/macOS
 ./support/scripts/up.sh
 
-# On Windows (PowerShell)
-.\support\scripts\up.ps1
+# On Windows with Git Bash
+bash support/scripts/up.sh
 ```
 
 > [!TIP]
@@ -66,4 +66,4 @@ The server can be configured via standard Quarkus mechanisms:
 3. **Local Properties**: A `.pgcheck-mcp.properties` file in the working directory.
 
 ## 📝 Logs
-To avoid corrupting the MCP protocol on `stdout`, all application logs are redirected to **`pgcheck-mcp.log`**.
+To avoid corrupting the MCP protocol on `stdout`, operational logs should go to `stderr` or a file-backed logger, never normal `stdout`.
