@@ -3,21 +3,20 @@
 //JAVA 17+
 
 //COMPILE_OPTIONS -encoding UTF-8
-//RUNTIME_OPTIONS -Dfile.encoding=UTF-8 -Dstdout.encoding=UTF-8
+//RUNTIME_OPTIONS -Dfile.encoding=UTF-8 -Dstdout.encoding=UTF-8 -Djava.util.logging.manager=org.jboss.logmanager.LogManager
 
-//DEPS io.quarkus:quarkus-bom:3.18.0@pom
-//DEPS io.quarkiverse.mcp:quarkus-mcp-server-stdio:1.1.0
+//DEPS io.quarkus:quarkus-bom:3.30.8@pom
+//DEPS io.quarkiverse.mcp:quarkus-mcp-server-stdio:1.12.0
 //DEPS io.quarkus:quarkus-jdbc-postgresql
 //DEPS io.quarkus:quarkus-agroal
-//DEPS com.fasterxml.jackson.core:jackson-databind:2.18.2
+//DEPS com.fasterxml.jackson.core:jackson-databind:2.20.2
 
 //Q:CONFIG quarkus.banner.enabled=false
 //Q:CONFIG quarkus.log.level=INFO
-//Q:CONFIG quarkus.log.console.enable=false
-//Q:CONFIG quarkus.log.file.enable=true
-//Q:CONFIG quarkus.log.file.path=pgcheck-mcp.log
-//Q:CONFIG quarkus.log.file.rotation.max-file-size=0
-//Q:CONFIG quarkus.log.file.format=%d{yyyy-MM-dd HH:mm:ss,SSS} %-5p [%c{3.}] %s%e%n
+//Q:CONFIG quarkus.log.console.enable=true
+//Q:CONFIG quarkus.log.console.stderr=true
+//Q:CONFIG quarkus.log.console.format=%d{yyyy-MM-dd HH:mm:ss,SSS} %-5p [%c{3.}] %s%e%n
+//Q:CONFIG quarkus.log.file.enable=false
 
 // Default Connection to Docker Playground
 //Q:CONFIG quarkus.datasource.db-kind=postgresql
