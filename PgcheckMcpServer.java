@@ -13,10 +13,10 @@
 
 //Q:CONFIG quarkus.banner.enabled=false
 //Q:CONFIG quarkus.log.level=INFO
-//Q:CONFIG quarkus.log.console.enable=true
+//Q:CONFIG quarkus.log.console.enabled=true
 //Q:CONFIG quarkus.log.console.stderr=true
 //Q:CONFIG quarkus.log.console.format=%d{yyyy-MM-dd HH:mm:ss,SSS} %-5p [%c{3.}] %s%e%n
-//Q:CONFIG quarkus.log.file.enable=false
+//Q:CONFIG quarkus.log.file.enabled=false
 
 // Default Connection to Docker Playground
 //Q:CONFIG quarkus.datasource.db-kind=postgresql

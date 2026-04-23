@@ -45,8 +45,8 @@ The file must contain default configurations that target the **Docker Playground
 ```java
 //Q:CONFIG quarkus.banner.enabled=false
 //Q:CONFIG quarkus.log.level=INFO
-//Q:CONFIG quarkus.log.console.enable=false
-//Q:CONFIG quarkus.log.file.enable=true
+//Q:CONFIG quarkus.log.console.enabled=false
+//Q:CONFIG quarkus.log.file.enabled=true
 //Q:CONFIG quarkus.log.file.path=pgcheck-mcp.log
 //Q:CONFIG quarkus.log.file.format=%d{yyyy-MM-dd HH:mm:ss,SSS} %-5p [%c{3.}] %s%e%n
 
